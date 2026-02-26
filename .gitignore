@@ -3,3 +3,10 @@ node_modules/
 .next/ 
 build/ 
 dist/ 
+__pycache__/ 
+*.pyc 
+*.pkl 
+*.db 
+backend/logs/ 
+backend/data/reports/ 
+frontend/tsconfig.tsbuildinfo 
