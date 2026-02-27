@@ -8,7 +8,10 @@ Now supports:
 
 from __future__ import annotations
 
+import csv
 import hashlib
+import json
+import logging
 import os
 import secrets
 import threading
@@ -35,7 +38,10 @@ from sqlalchemy import (
 )
 from sqlalchemy.engine import Engine
 
+from ai_engine.retraining_engine import RetrainingEngine
 from core.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 def _utc_now() -> str:
@@ -59,6 +65,17 @@ def _normalize_database_url(database_url: str) -> str:
 
 
 class EnterpriseIdentityService:
+    TRAINING_DATASET_FIELDS = [
+        "building_id",
+        "temperature",
+        "humidity",
+        "occupancy",
+        "day_of_week",
+        "hour",
+        "energy_usage_kwh",
+        "timestamp",
+    ]
+
     def __init__(self, db_path: Optional[Path | str] = None, database_url: Optional[str] = None):
         local_sqlite_path = Path(db_path) if db_path else Path(settings.DATA_DIR) / "enterprise_platform.db"
         local_sqlite_path.parent.mkdir(parents=True, exist_ok=True)
@@ -136,6 +153,7 @@ class EnterpriseIdentityService:
         self._auto_interval_sec = 120
         self._auto_min_samples = 20
         self._auto_purge = True
+        self.retraining_engine = RetrainingEngine()
         self._bootstrap()
 
     def _bootstrap(self):
@@ -412,6 +430,103 @@ class EnterpriseIdentityService:
             rows = conn.execute(stmt).mappings().all()
         return [dict(row) for row in rows]
 
+    @staticmethod
+    def _to_int(value: Any, default: int) -> int:
+        try:
+            return int(float(value))
+        except (TypeError, ValueError):
+            return default
+
+    @staticmethod
+    def _to_float(value: Any, default: float) -> float:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return default
+
+    def _normalize_training_payload(self, payload_json: str) -> Optional[Dict[str, Any]]:
+        try:
+            raw_payload = json.loads(payload_json)
+        except (TypeError, json.JSONDecodeError):
+            return None
+
+        if not isinstance(raw_payload, dict):
+            return None
+
+        now = datetime.utcnow()
+        building_id = max(1, min(self._to_int(raw_payload.get("building_id", raw_payload.get("site_id")), 1), 10000))
+        temperature = max(
+            -30.0,
+            min(
+                self._to_float(raw_payload.get("temperature", raw_payload.get("thermal_index_c")), 25.0),
+                70.0,
+            ),
+        )
+        humidity = max(0.0, min(self._to_float(raw_payload.get("humidity"), 50.0), 100.0))
+        occupancy = max(0.0, min(self._to_float(raw_payload.get("occupancy"), 0.0), 20000.0))
+        day_of_week = max(
+            0,
+            min(self._to_int(raw_payload.get("day_of_week", raw_payload.get("dayofweek")), now.weekday()), 6),
+        )
+        hour = max(0, min(self._to_int(raw_payload.get("hour"), now.hour), 23))
+
+        energy_usage = raw_payload.get("energy_usage_kwh")
+        if energy_usage is None:
+            energy_usage = raw_payload.get("energy")
+        if energy_usage is None:
+            energy_usage = raw_payload.get("current_load")
+        if energy_usage is None:
+            energy_usage = raw_payload.get("grid_load")
+        if energy_usage is None:
+            return None
+
+        energy_usage_kwh = max(0.0, min(self._to_float(energy_usage, -1.0), 100000.0))
+        if energy_usage_kwh < 0:
+            return None
+
+        return {
+            "building_id": building_id,
+            "temperature": round(temperature, 4),
+            "humidity": round(humidity, 4),
+            "occupancy": round(occupancy, 4),
+            "day_of_week": day_of_week,
+            "hour": hour,
+            "energy_usage_kwh": round(energy_usage_kwh, 4),
+            "timestamp": now.isoformat(),
+        }
+
+    def _append_rows_to_training_dataset(self, rows: List[Dict[str, Any]]) -> int:
+        if not rows:
+            return 0
+
+        dataset_path = Path(settings.DATA_DIR) / "training_dataset.csv"
+        dataset_path.parent.mkdir(parents=True, exist_ok=True)
+
+        existing_header: List[str] = []
+        if dataset_path.exists() and dataset_path.stat().st_size > 0:
+            try:
+                with dataset_path.open("r", encoding="utf-8", newline="") as handle:
+                    existing_header = next(csv.reader(handle), [])
+            except Exception:
+                existing_header = []
+
+        fieldnames = existing_header if existing_header else list(self.TRAINING_DATASET_FIELDS)
+        for field in self.TRAINING_DATASET_FIELDS:
+            if field not in fieldnames:
+                fieldnames.append(field)
+
+        write_header = (not dataset_path.exists()) or dataset_path.stat().st_size == 0
+        with dataset_path.open("a", encoding="utf-8", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=fieldnames)
+            if write_header:
+                writer.writeheader()
+
+            for row in rows:
+                aligned_row = {key: row.get(key, "") for key in fieldnames}
+                writer.writerow(aligned_row)
+
+        return len(rows)
+
     def run_training_cycle(
         self,
         model_name: Optional[str] = None,
@@ -424,68 +539,147 @@ class EnterpriseIdentityService:
         if normalized_model and normalized_model not in {"forecast", "anomaly", "rl"}:
             raise ValueError("Unsupported model_name. Use forecast|anomaly|rl")
 
-        with self._lock, self.engine.begin() as conn:
-            select_stmt = (
-                select(self.training_samples.c.id)
-                .where(self.training_samples.c.status == "pending")
-                .order_by(self.training_samples.c.id.asc())
-                .limit(max_samples)
-            )
-            if normalized_model:
-                select_stmt = select_stmt.where(self.training_samples.c.model_name == normalized_model)
-
-            ids = [int(row["id"]) for row in conn.execute(select_stmt).mappings().all()]
-
-            if not ids:
-                completed_at = _utc_now()
-                conn.execute(
-                    insert(self.training_runs).values(
-                        model_name=normalized_model or "mixed",
-                        sample_count=0,
-                        status="skipped",
-                        notes="No pending training samples",
-                        started_at=started_at,
-                        completed_at=completed_at,
+        with self._lock:
+            with self.engine.begin() as conn:
+                select_stmt = (
+                    select(
+                        self.training_samples.c.id,
+                        self.training_samples.c.model_name,
+                        self.training_samples.c.payload_json,
                     )
+                    .where(self.training_samples.c.status == "pending")
+                    .order_by(self.training_samples.c.id.asc())
+                    .limit(max_samples)
                 )
+                if normalized_model:
+                    select_stmt = select_stmt.where(self.training_samples.c.model_name == normalized_model)
+
+                sample_rows = conn.execute(select_stmt).mappings().all()
+                ids = [int(row["id"]) for row in sample_rows]
+
+                if not ids:
+                    completed_at = _utc_now()
+                    conn.execute(
+                        insert(self.training_runs).values(
+                            model_name=normalized_model or "mixed",
+                            sample_count=0,
+                            status="skipped",
+                            notes="No pending training samples",
+                            started_at=started_at,
+                            completed_at=completed_at,
+                        )
+                    )
+                    return {
+                        "status": "skipped",
+                        "sample_count": 0,
+                        "model_name": normalized_model or "mixed",
+                        "purged_count": 0,
+                        "training_status": "not_started",
+                    }
+
+                conn.execute(
+                    update(self.training_samples)
+                    .where(self.training_samples.c.id.in_(ids))
+                    .values(status="processing")
+                )
+
+            normalized_rows: List[Dict[str, Any]] = []
+            invalid_payloads = 0
+            for row in sample_rows:
+                normalized_payload = self._normalize_training_payload(str(row.get("payload_json") or ""))
+                if normalized_payload is None:
+                    invalid_payloads += 1
+                    continue
+                normalized_rows.append(normalized_payload)
+
+            if not normalized_rows:
+                completed_at = _utc_now()
+                with self.engine.begin() as conn:
+                    conn.execute(
+                        update(self.training_samples)
+                        .where(self.training_samples.c.id.in_(ids))
+                        .values(status="pending")
+                    )
+                    conn.execute(
+                        insert(self.training_runs).values(
+                            model_name=normalized_model or "mixed",
+                            sample_count=0,
+                            status="skipped",
+                            notes="No valid payloads found in queued samples",
+                            started_at=started_at,
+                            completed_at=completed_at,
+                        )
+                    )
                 return {
                     "status": "skipped",
-                    "sample_count": 0,
+                    "sample_count": len(ids),
+                    "normalized_rows": 0,
+                    "invalid_payloads": invalid_payloads,
                     "model_name": normalized_model or "mixed",
                     "purged_count": 0,
+                    "training_status": "not_started",
                 }
 
-            trained_at = _utc_now()
-            conn.execute(
-                update(self.training_samples)
-                .where(self.training_samples.c.id.in_(ids))
-                .values(status="trained", trained_at=trained_at)
-            )
-
-            purged_count = 0
-            if purge_after_train:
-                purge_result = conn.execute(delete(self.training_samples).where(self.training_samples.c.id.in_(ids)))
-                purged_count = int(purge_result.rowcount or 0)
+            appended_rows = self._append_rows_to_training_dataset(normalized_rows)
+            retrain_result = self.retraining_engine.run_retraining_pipeline()
+            retrain_status = str(retrain_result.get("status", "failed")).strip().lower()
+            training_success = retrain_status == "completed"
 
             completed_at = _utc_now()
-            notes = "Auto train completed and trained samples purged." if purge_after_train else "Auto train completed."
-            conn.execute(
-                insert(self.training_runs).values(
-                    model_name=normalized_model or "mixed",
-                    sample_count=len(ids),
-                    status="completed",
-                    notes=notes,
-                    started_at=started_at,
-                    completed_at=completed_at,
-                )
-            )
+            purged_count = 0
+            with self.engine.begin() as conn:
+                if training_success:
+                    trained_at = _utc_now()
+                    conn.execute(
+                        update(self.training_samples)
+                        .where(self.training_samples.c.id.in_(ids))
+                        .values(status="trained", trained_at=trained_at)
+                    )
 
-        return {
-            "status": "completed",
-            "sample_count": len(ids),
-            "model_name": normalized_model or "mixed",
-            "purged_count": purged_count,
-        }
+                    if purge_after_train:
+                        purge_result = conn.execute(delete(self.training_samples).where(self.training_samples.c.id.in_(ids)))
+                        purged_count = int(purge_result.rowcount or 0)
+
+                    conn.execute(
+                        insert(self.training_runs).values(
+                            model_name=normalized_model or "mixed",
+                            sample_count=appended_rows,
+                            status="completed",
+                            notes=(
+                                f"Training completed. normalized_rows={appended_rows}; "
+                                f"invalid_payloads={invalid_payloads}; purge_after_train={bool(purge_after_train)}"
+                            ),
+                            started_at=started_at,
+                            completed_at=completed_at,
+                        )
+                    )
+                else:
+                    conn.execute(
+                        update(self.training_samples)
+                        .where(self.training_samples.c.id.in_(ids))
+                        .values(status="pending")
+                    )
+                    conn.execute(
+                        insert(self.training_runs).values(
+                            model_name=normalized_model or "mixed",
+                            sample_count=appended_rows,
+                            status="failed",
+                            notes=str(retrain_result.get("error", "Retraining pipeline failed")),
+                            started_at=started_at,
+                            completed_at=completed_at,
+                        )
+                    )
+
+            return {
+                "status": "completed" if training_success else "failed",
+                "sample_count": len(ids),
+                "normalized_rows": appended_rows,
+                "invalid_payloads": invalid_payloads,
+                "model_name": normalized_model or "mixed",
+                "purged_count": purged_count,
+                "training_status": retrain_status,
+                "training_result": retrain_result,
+            }
 
     def _auto_loop(self):
         while self._auto_running:
@@ -494,7 +688,7 @@ class EnterpriseIdentityService:
                 if int(stats.get("pending_samples", 0)) >= self._auto_min_samples:
                     self.run_training_cycle(model_name=None, max_samples=1000, purge_after_train=self._auto_purge)
             except Exception:
-                pass
+                logger.exception("Enterprise auto trainer iteration failed")
             time.sleep(self._auto_interval_sec)
 
     def start_auto_trainer(self, interval_sec: int = 120, min_samples: int = 20, purge_after_train: bool = True):

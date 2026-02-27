@@ -34,9 +34,10 @@ class Settings(BaseSettings):
     # =====================================================
     # SECURITY
     # =====================================================
-    SECRET_KEY: str = "SUPER_SECRET_PRODUCTION_KEY"
+    SECRET_KEY: str = "dev-only-secret-change-in-production"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     TOKEN_EXPIRE_MINUTES: int = 60
+    CORS_ALLOWED_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"
 
     # =====================================================
     # OPTIMIZATION CONSTRAINTS
@@ -93,6 +94,9 @@ class Settings(BaseSettings):
     RETRAIN_INTERVAL_SECONDS: int = 86400
     RETRAIN_INTERVAL_HOURS: int = 24
     DATA_MONITOR_INTERVAL: int = 3600
+    DATASET_BUILD_INTERVAL: int = 300
+    AUTO_TRAIN_INTERVAL: int = 1800
+    MIN_DATASET_SIZE: int = 100
     HEALTH_CHECK_INTERVAL: int = 600
     RUNTIME_LIFECYCLE_INTERVAL: int = 60
     RUNTIME_HEALTH_INTERVAL: int = 30
@@ -100,6 +104,8 @@ class Settings(BaseSettings):
     RL_TRAINING_INTERVAL: int = 120
     SELF_EVOLUTION_INTERVAL: int = 90
     CRITICAL_DRIFT_THRESHOLD: float = 2.0
+    DATASET_DIR: Path = DATA_DIR / "datasets"
+    CANDIDATE_MODEL_DIR: Path = AI_MODEL_DIR / "candidates"
 
     class Config:
         env_file = ".env"

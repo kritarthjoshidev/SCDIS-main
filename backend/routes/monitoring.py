@@ -11,10 +11,11 @@ from pathlib import Path
 from statistics import mean
 from typing import Any, Dict
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, Response
 
 from core.config import settings
+from core.security import security_manager
 from services.data_drift_monitor import DataDriftMonitor
 from ai_engine.retraining_engine import RetrainingEngine
 from ml_pipeline.model_registry import ModelRegistry
@@ -32,7 +33,11 @@ from utils.model_loader import ModelLoader
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/monitoring", tags=["Monitoring"])
+router = APIRouter(
+    prefix="/monitoring",
+    tags=["Monitoring"],
+    dependencies=[Depends(security_manager.get_current_user)],
+)
 
 drift_monitor = DataDriftMonitor()
 retraining_engine = RetrainingEngine()
@@ -151,7 +156,7 @@ async def data_drift_status():
 # TRIGGER DRIFT CHECK
 # -------------------------------------------------------------
 @router.post("/trigger-drift-check")
-async def trigger_drift_check():
+async def trigger_drift_check(_: Dict[str, Any] = Depends(security_manager.get_current_user)):
     try:
         result = drift_monitor.run_drift_check()
         return {"status": "completed", "result": result}
@@ -368,7 +373,7 @@ async def drift_history():
 # FORCE MODEL REGISTRY REFRESH
 # -------------------------------------------------------------
 @router.post("/refresh-model-registry")
-async def refresh_model_registry():
+async def refresh_model_registry(_: Dict[str, Any] = Depends(security_manager.get_current_user)):
     try:
         model_registry.refresh_registry()
         return {"status": "model registry refreshed"}
@@ -403,7 +408,10 @@ async def live_laptop_status():
 # AUTO APPLY TOGGLE
 # -------------------------------------------------------------
 @router.post("/laptop/auto-apply")
-async def laptop_auto_apply(payload: Dict[str, Any]):
+async def laptop_auto_apply(
+    payload: Dict[str, Any],
+    _: Dict[str, Any] = Depends(security_manager.get_current_user),
+):
     try:
         enabled = bool(payload.get("enabled", True))
         laptop_runtime_service.set_auto_apply(enabled)
@@ -425,7 +433,10 @@ async def laptop_auto_apply(payload: Dict[str, Any]):
 # RUNTIME MODE (LIVE_EDGE/SIMULATION/HYBRID)
 # -------------------------------------------------------------
 @router.post("/laptop/mode")
-async def laptop_runtime_mode(payload: Dict[str, Any]):
+async def laptop_runtime_mode(
+    payload: Dict[str, Any],
+    _: Dict[str, Any] = Depends(security_manager.get_current_user),
+):
     try:
         mode = str(payload.get("mode", "LIVE_EDGE"))
         laptop_runtime_service.set_mode(mode)
@@ -449,7 +460,10 @@ async def laptop_runtime_mode(payload: Dict[str, Any]):
 # SCENARIO CONTROL
 # -------------------------------------------------------------
 @router.post("/laptop/scenario")
-async def laptop_scenario(payload: Dict[str, Any]):
+async def laptop_scenario(
+    payload: Dict[str, Any],
+    _: Dict[str, Any] = Depends(security_manager.get_current_user),
+):
     try:
         scenario = str(payload.get("scenario", "normal"))
         cycles = int(payload.get("cycles", 12))
@@ -475,7 +489,7 @@ async def laptop_scenario(payload: Dict[str, Any]):
 # AI MODELS: MANUAL RETRAIN
 # -------------------------------------------------------------
 @router.post("/ai-models/retrain")
-async def retrain_ai_models():
+async def retrain_ai_models(_: Dict[str, Any] = Depends(security_manager.get_current_user)):
     try:
         result = retraining_engine.run_retraining_pipeline()
         governance_audit_service.log(
@@ -738,7 +752,10 @@ async def model_reliability():
 # ENTERPRISE: STRESS VALIDATION
 # -------------------------------------------------------------
 @router.post("/stress-test/run")
-async def stress_test_run(payload: Dict[str, Any]):
+async def stress_test_run(
+    payload: Dict[str, Any],
+    _: Dict[str, Any] = Depends(security_manager.get_current_user),
+):
     cycles = int(payload.get("cycles", 12))
     try:
         report = feature_pack_service.stress_validation(runtime_service=laptop_runtime_service, cycles=cycles)

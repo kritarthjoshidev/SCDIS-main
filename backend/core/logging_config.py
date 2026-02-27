@@ -30,6 +30,8 @@ class LoggingConfig:
         # Root logger
         root_logger = logging.getLogger()
         root_logger.setLevel(logging.INFO)
+        for handler in list(root_logger.handlers):
+            root_logger.removeHandler(handler)
 
         # Console handler
         console_handler = logging.StreamHandler()

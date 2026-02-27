@@ -1,90 +1,82 @@
-# backend/security/security_manager.py
-
 import logging
-from datetime import datetime, timedelta, UTC
 from typing import Dict, Optional
 
 from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+
+from services.enterprise_identity_service import enterprise_identity_service
 
 logger = logging.getLogger(__name__)
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+bearer = HTTPBearer(auto_error=False)
 
 
 class SecurityManager:
-    def __init__(self):
-        self.fake_user = {
-            "username": "enterprise_admin",
-            "role": "admin",
-            "permissions": ["decision", "runtime_control", "monitoring"]
+    @staticmethod
+    def _permissions_for_role(role: str) -> list[str]:
+        normalized_role = str(role or "").strip().lower()
+        if normalized_role == "admin":
+            return ["decision", "runtime_control", "monitoring", "model_ops", "training"]
+        if normalized_role == "org_admin":
+            return ["decision", "monitoring", "runtime_control", "model_ops", "training"]
+        return []
+
+    def authenticate_token(self, token: str) -> Optional[Dict]:
+        if not token:
+            return None
+
+        try:
+            session = enterprise_identity_service.validate_session(token)
+        except PermissionError:
+            return None
+
+        role = str(session.get("role") or "")
+        return {
+            "user_id": session.get("user_id"),
+            "email": session.get("email"),
+            "role": role,
+            "organization_id": session.get("organization_id"),
+            "organization_name": session.get("organization_name"),
+            "permissions": self._permissions_for_role(role),
         }
 
-    # ---------------------------------------------------
-    # Authentication (mock enterprise auth)
-    # ---------------------------------------------------
-    def authenticate_token(self, token: str) -> Optional[Dict]:
-        """
-        In production this would verify JWT.
-        For now enterprise demo uses mock validation.
-        """
-        if token:
-            return self.fake_user
-        return None
-
-    # ---------------------------------------------------
-    # FastAPI dependency
-    # ---------------------------------------------------
-    async def get_current_user(self, token: str = Depends(oauth2_scheme)) -> Dict:
+    async def get_current_user(
+        self,
+        credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer),
+    ) -> Dict:
+        token = credentials.credentials if credentials and credentials.scheme.lower() == "bearer" else ""
         user = self.authenticate_token(token)
-
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid authentication credentials",
             )
-
         return user
 
-    # ---------------------------------------------------
-    # FastAPI dependency - Admin only
-    # ---------------------------------------------------
-    async def get_current_admin(self, token: str = Depends(oauth2_scheme)) -> Dict:
-        user = self.authenticate_token(token)
-
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid authentication credentials",
-            )
-
+    async def get_current_admin(
+        self,
+        credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer),
+    ) -> Dict:
+        user = await self.get_current_user(credentials)
         if user.get("role") != "admin":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Admin privileges required",
             )
-
         return user
 
-    # ---------------------------------------------------
-    # Token verification dependency
-    # ---------------------------------------------------
-    async def verify_token(self, token: str = Depends(oauth2_scheme)) -> Dict:
-        """
-        Verifies token and returns user info (alias for get_current_user)
-        """
-        return await self.get_current_user(token)
+    async def verify_token(
+        self,
+        credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer),
+    ) -> Dict:
+        return await self.get_current_user(credentials)
 
-    # ---------------------------------------------------
-    # Permission check
-    # ---------------------------------------------------
     def check_permission(self, user: Dict, permission: str):
         if permission not in user.get("permissions", []):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Insufficient permissions"
+                detail="Insufficient permissions",
             )
 
 
-# Singleton
 security_manager = SecurityManager()

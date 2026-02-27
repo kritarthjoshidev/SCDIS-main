@@ -6,13 +6,18 @@ Provides trusted telemetry ingestion and validation endpoints.
 import logging
 from typing import Any, Dict
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
+from core.security import security_manager
 from services.telemetry_service import TelemetryService
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/telemetry", tags=["Telemetry"])
+router = APIRouter(
+    prefix="/telemetry",
+    tags=["Telemetry"],
+    dependencies=[Depends(security_manager.get_current_user)],
+)
 telemetry_service = TelemetryService()
 
 

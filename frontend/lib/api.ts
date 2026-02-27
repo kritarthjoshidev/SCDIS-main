@@ -1,3 +1,5 @@
+import { readAuthSession } from "@/lib/auth-session"
+
 const PRIMARY_API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"
 const API_FALLBACK_CANDIDATES = Array.from(
   new Set([PRIMARY_API_BASE_URL, "http://localhost:8010", "http://127.0.0.1:8010"])
@@ -584,6 +586,12 @@ function normalizeApiErrorMessage(status: number, detail: unknown): string {
     if (lowered.includes("admin access required")) {
       return "This action is allowed only for admin users."
     }
+    if (lowered.includes("operator access required")) {
+      return "This action requires an authenticated admin or organization admin account."
+    }
+    if (lowered.includes("role not allowed for this login endpoint")) {
+      return "This account cannot use this login option. Try Admin Login or create/login with organization account."
+    }
     return normalized
   }
 
@@ -623,8 +631,17 @@ function parseErrorDetail(rawBody: string): unknown {
   }
 }
 
+function withAuthHeaders(headers?: HeadersInit): Headers {
+  const nextHeaders = new Headers(headers)
+  const session = readAuthSession()
+  if (session?.token && !nextHeaders.has("Authorization")) {
+    nextHeaders.set("Authorization", `Bearer ${session.token}`)
+  }
+  return nextHeaders
+}
+
 async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
-  const headers = new Headers(init?.headers)
+  const headers = withAuthHeaders(init?.headers)
   if (!headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json")
   }
@@ -1025,7 +1042,9 @@ export async function downloadMonitoringReport(
     triedBases.add(baseUrl)
 
     try {
-      const response = await fetch(`${baseUrl}${path}`)
+      const response = await fetch(`${baseUrl}${path}`, {
+        headers: withAuthHeaders(),
+      })
       if (!response.ok) {
         const message = await response.text()
         const responseError = new Error(`API ${response.status}: ${message || "request failed"}`)
@@ -1119,7 +1138,9 @@ export async function exportAiModelWeights(model: ExportModelTarget = "forecast"
     triedBases.add(baseUrl)
 
     try {
-      const response = await fetch(`${baseUrl}${path}`)
+      const response = await fetch(`${baseUrl}${path}`, {
+        headers: withAuthHeaders(),
+      })
       if (!response.ok) {
         const message = await response.text()
         const responseError = new Error(`API ${response.status}: ${message || "request failed"}`)
@@ -1152,7 +1173,9 @@ async function downloadBlob(path: string): Promise<Blob> {
     triedBases.add(baseUrl)
 
     try {
-      const response = await fetch(`${baseUrl}${path}`)
+      const response = await fetch(`${baseUrl}${path}`, {
+        headers: withAuthHeaders(),
+      })
       if (!response.ok) {
         const message = await response.text()
         const responseError = new Error(`API ${response.status}: ${message || "request failed"}`)

@@ -21,6 +21,7 @@ import { SettingsTab } from "@/components/dashboard/tabs/settings-tab"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { ScrollReveal } from "@/components/ui/scroll-reveal"
 import { useRouter } from "next/navigation"
+import { clearAuthSession, readAuthSession, type StoredAuthSession } from "@/lib/auth-session"
 import {
   getLiveLaptopDashboard,
   getExecutiveKpis,
@@ -295,34 +296,25 @@ export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState<TabId>("dashboard")
   const [authReady, setAuthReady] = useState(false)
   const [authRole, setAuthRole] = useState<"admin" | "org_admin" | null>(null)
+  const [authSession, setAuthSession] = useState<StoredAuthSession | null>(null)
 
   useEffect(() => {
-    if (typeof window === "undefined") {
-      return
-    }
-
-    const token = window.localStorage.getItem("scdis_auth_token")
-    const role = window.localStorage.getItem("scdis_auth_role")
-    const expires = window.localStorage.getItem("scdis_auth_expires")
-
-    if (!token || !role || !expires) {
+    const session = readAuthSession()
+    if (!session) {
       router.replace("/access")
       return
     }
 
-    const expiresAt = new Date(expires)
+    const expiresAt = new Date(session.expiresAt)
     if (Number.isNaN(expiresAt.getTime()) || expiresAt.getTime() <= Date.now()) {
-      window.localStorage.removeItem("scdis_auth_token")
-      window.localStorage.removeItem("scdis_auth_role")
-      window.localStorage.removeItem("scdis_auth_email")
-      window.localStorage.removeItem("scdis_auth_org")
-      window.localStorage.removeItem("scdis_auth_expires")
+      clearAuthSession()
       router.replace("/access")
       return
     }
 
-    if (role === "admin" || role === "org_admin") {
-      setAuthRole(role)
+    if (session.role === "admin" || session.role === "org_admin") {
+      setAuthRole(session.role)
+      setAuthSession(session)
       setAuthReady(true)
       return
     }
@@ -345,7 +337,11 @@ export default function DashboardPage() {
       <SidebarNav activeTab={activeTab} onTabChange={setActiveTab} role={authRole} />
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <DashboardHeader />
+        <DashboardHeader
+          role={authRole}
+          email={authSession?.email ?? ""}
+          organizationName={authSession?.organizationName ?? ""}
+        />
 
         <ScrollArea className="min-h-0 flex-1">
           <main className="p-4 lg:p-6">

@@ -4,7 +4,13 @@ import { useEffect, useState } from "react"
 import { motion } from "framer-motion"
 import { Hexagon, Wifi, Clock } from "lucide-react"
 
-export function DashboardHeader() {
+interface DashboardHeaderProps {
+  role?: "admin" | "org_admin" | null
+  email?: string
+  organizationName?: string
+}
+
+export function DashboardHeader({ role = null, email = "", organizationName = "" }: DashboardHeaderProps) {
   const [time, setTime] = useState("")
   const [uptime, setUptime] = useState(0)
 
@@ -27,6 +33,14 @@ export function DashboardHeader() {
     return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${sec.toString().padStart(2, "0")}`
   }
 
+  const roleLabel = role === "admin" ? "ADMIN" : role === "org_admin" ? "ORG ADMIN" : "GUEST"
+  const identityLabel =
+    role === "org_admin"
+      ? organizationName || email || "Organization Account"
+      : role === "admin"
+        ? email || "Administrator"
+        : "Unauthenticated"
+
   return (
     <motion.header
       initial={{ opacity: 0, y: -10 }}
@@ -48,6 +62,10 @@ export function DashboardHeader() {
               <span className="font-mono text-[10px] uppercase tracking-widest text-neon-green">
                 Autonomous Mode Active
               </span>
+            </div>
+            <div className="hidden items-center gap-1.5 rounded-lg border border-neon-cyan/30 bg-neon-cyan/10 px-2.5 py-1 lg:flex">
+              <span className="font-mono text-[9px] uppercase tracking-wider text-neon-cyan">{roleLabel}</span>
+              <span className="font-mono text-[9px] text-muted-foreground">{identityLabel}</span>
             </div>
           </div>
         </div>

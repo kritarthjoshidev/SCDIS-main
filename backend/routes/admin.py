@@ -19,7 +19,7 @@ deployment_manager = DeploymentManager()
 # Run full training pipeline manually
 # ==================================================
 @router.post("/run-training")
-def run_training(user=Depends(security_manager.verify_token)):
+def run_training(user=Depends(security_manager.get_current_admin)):
 
     try:
         result = pipeline_controller.run_training_pipeline()
@@ -39,7 +39,7 @@ def run_training(user=Depends(security_manager.verify_token)):
 # Promote model manually
 # ==================================================
 @router.post("/promote/{version}")
-def promote_model(version: str, user=Depends(security_manager.verify_token)):
+def promote_model(version: str, user=Depends(security_manager.get_current_admin)):
 
     result = deployment_manager.promote_to_production(version)
 
@@ -54,7 +54,7 @@ def promote_model(version: str, user=Depends(security_manager.verify_token)):
 # Rollback model
 # ==================================================
 @router.post("/rollback/{version}")
-def rollback_model(version: str, user=Depends(security_manager.verify_token)):
+def rollback_model(version: str, user=Depends(security_manager.get_current_admin)):
 
     result = deployment_manager.rollback(version)
 
@@ -69,7 +69,7 @@ def rollback_model(version: str, user=Depends(security_manager.verify_token)):
 # Model registry inspection
 # ==================================================
 @router.get("/registry")
-def registry_summary(user=Depends(security_manager.verify_token)):
+def registry_summary(user=Depends(security_manager.get_current_admin)):
 
     return registry.get_registry_summary()
 
@@ -78,7 +78,7 @@ def registry_summary(user=Depends(security_manager.verify_token)):
 # Pipeline status
 # ==================================================
 @router.get("/pipeline-status")
-def pipeline_status(user=Depends(security_manager.verify_token)):
+def pipeline_status(user=Depends(security_manager.get_current_admin)):
 
     return pipeline_controller.pipeline_status()
 
@@ -87,7 +87,7 @@ def pipeline_status(user=Depends(security_manager.verify_token)):
 # System control — scheduler restart
 # ==================================================
 @router.post("/system/restart-scheduler")
-def restart_scheduler(user=Depends(security_manager.verify_token)):
+def restart_scheduler(user=Depends(security_manager.get_current_admin)):
 
     return {
         "status": "scheduler_restart_requested",

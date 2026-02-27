@@ -67,7 +67,7 @@ async def explain_last_decision(current_user: Dict = Depends(security_manager.ge
 # ------------------------------------------------------------
 @router.post("/manual-override")
 async def manual_override(payload: Dict[str, Any],
-                          current_user: Dict = Depends(security_manager.get_current_admin)):
+                          current_user: Dict = Depends(security_manager.get_current_user)):
     """
     Allows admin to override AI decision
     """
@@ -111,7 +111,7 @@ async def ai_health():
 # RL POLICY UPDATE TRIGGER
 # ------------------------------------------------------------
 @router.post("/trigger-rl-training")
-async def trigger_rl_training(current_user: Dict = Depends(security_manager.get_current_admin)):
+async def trigger_rl_training(current_user: Dict = Depends(security_manager.get_current_user)):
     """
     Trigger reinforcement learning training manually
     """

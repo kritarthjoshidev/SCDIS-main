@@ -107,12 +107,12 @@ class AutoTrainingPipeline:
     # FEATURE PREPARATION
     # ---------------------------------------------------------
     def _prepare_features(self, df):
+        target_column = "energy_usage_kwh" if "energy_usage_kwh" in df.columns else "energy_usage"
+        if target_column not in df.columns:
+            raise ValueError("Dataset missing target column (energy_usage_kwh)")
 
-        if "energy_usage" not in df.columns:
-            raise ValueError("Dataset missing target column")
-
-        y = df["energy_usage"]
-        X = df.drop(columns=["energy_usage"], errors="ignore")
+        y = df[target_column]
+        X = df.drop(columns=[target_column], errors="ignore")
 
         X = X.select_dtypes(include=["float64", "int64"])
 

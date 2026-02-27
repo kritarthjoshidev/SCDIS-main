@@ -1,17 +1,11 @@
+import logging
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-import logging
 
+from core.config import settings
 # Routers
 from routes.decision import router as decision_router
-
-# ==========================
-# Logging setup
-# ==========================
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(name)s - %(message)s"
-)
 
 logger = logging.getLogger("SCDIS")
 
@@ -29,9 +23,18 @@ app = FastAPI(
 # ==========================
 # CORS configuration
 # ==========================
+def _parse_cors_origins(raw: str) -> list[str]:
+    origins = [item.strip() for item in str(raw or "").split(",") if item.strip()]
+    if not origins:
+        return ["http://localhost:3000", "http://127.0.0.1:3000"]
+    return origins
+
+
+CORS_ORIGINS = _parse_cors_origins(settings.CORS_ALLOWED_ORIGINS)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -48,7 +51,7 @@ app.include_router(decision_router)
 # Startup event
 # ==========================
 @app.on_event("startup")
-async def startup_event():
+async def startup_log():
     logger.info("SCDIS backend started successfully")
 
 
@@ -97,7 +100,7 @@ from services.laptop_runtime_service import laptop_runtime_service
 from services.enterprise_identity_service import enterprise_identity_service
 
 @app.on_event("startup")
-async def startup_event():
+async def startup_enterprise_bootstrap():
     enterprise_autonomous_bootstrap.start()
 
 
@@ -109,3 +112,16 @@ def start_laptop_runtime():
 @app.on_event("startup")
 def start_auto_training_pipeline():
     enterprise_identity_service.start_auto_trainer(interval_sec=120, min_samples=20, purge_after_train=True)
+
+
+@app.on_event("startup")
+def validate_production_security():
+    if str(settings.ENVIRONMENT).strip().lower() != "production":
+        return
+
+    if settings.SECRET_KEY.strip() == "" or settings.SECRET_KEY == "dev-only-secret-change-in-production":
+        raise RuntimeError("SECRET_KEY must be configured for production")
+    if "*" in CORS_ORIGINS:
+        raise RuntimeError("CORS_ALLOWED_ORIGINS cannot contain '*' in production")
+    if os.getenv("SCDIS_ADMIN_PASSWORD", "admin123") == "admin123":
+        raise RuntimeError("Set a non-default SCDIS_ADMIN_PASSWORD in production")

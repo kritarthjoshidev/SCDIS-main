@@ -43,9 +43,9 @@ def _session_from_credentials(
         raise HTTPException(status_code=401, detail=str(e))
 
 
-def _admin_session(session: Dict[str, Any] = Depends(_session_from_credentials)) -> Dict[str, Any]:
-    if str(session.get("role")) != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required")
+def _operator_session(session: Dict[str, Any] = Depends(_session_from_credentials)) -> Dict[str, Any]:
+    if str(session.get("role")) not in {"admin", "org_admin"}:
+        raise HTTPException(status_code=403, detail="Operator access required")
     return session
 
 
@@ -77,7 +77,7 @@ def ingest_training_sample(
 @router.post("/run-now")
 def run_training_now(
     payload: RunTrainingRequest,
-    _: Dict[str, Any] = Depends(_admin_session),
+    _: Dict[str, Any] = Depends(_operator_session),
 ):
     try:
         result = enterprise_identity_service.run_training_cycle(
@@ -97,7 +97,7 @@ def run_training_now(
 
 
 @router.get("/stats")
-def training_stats(_: Dict[str, Any] = Depends(_admin_session)):
+def training_stats(_: Dict[str, Any] = Depends(_operator_session)):
     return {
         "status": "ok",
         "timestamp": datetime.utcnow().isoformat(),
@@ -108,7 +108,7 @@ def training_stats(_: Dict[str, Any] = Depends(_admin_session)):
 @router.get("/runs")
 def training_runs(
     limit: int = Query(default=30, ge=1, le=200),
-    _: Dict[str, Any] = Depends(_admin_session),
+    _: Dict[str, Any] = Depends(_operator_session),
 ):
     return {
         "status": "ok",
@@ -120,7 +120,7 @@ def training_runs(
 @router.post("/auto-trainer/start")
 def start_auto_trainer(
     payload: AutoTrainerRequest,
-    _: Dict[str, Any] = Depends(_admin_session),
+    _: Dict[str, Any] = Depends(_operator_session),
 ):
     enterprise_identity_service.start_auto_trainer(
         interval_sec=payload.interval_sec,
@@ -135,7 +135,7 @@ def start_auto_trainer(
 
 
 @router.post("/auto-trainer/stop")
-def stop_auto_trainer(_: Dict[str, Any] = Depends(_admin_session)):
+def stop_auto_trainer(_: Dict[str, Any] = Depends(_operator_session)):
     enterprise_identity_service.stop_auto_trainer()
     return {
         "status": "ok",

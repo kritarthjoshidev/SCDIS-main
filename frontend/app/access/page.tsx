@@ -21,6 +21,7 @@ const WELCOME_LOTTIE_SRC =
   "https://lottie.host/85b3b1ca-5e99-45c5-b1aa-ce2549d6059b/ksHdDBkWXc.lottie"
 
 type IntroStage = "welcome" | "transition" | "ready"
+type OrganizationAuthMode = "signup" | "login"
 
 import { persistAuthSession } from "@/lib/auth-session"
 
@@ -37,12 +38,13 @@ export default function AccessPage() {
   const [loading, setLoading] = useState(false)
   const [introStage, setIntroStage] = useState<IntroStage>("welcome")
 
-  const [adminEmail, setAdminEmail] = useState("admin@scdis.local")
-  const [adminPassword, setAdminPassword] = useState("admin123")
+  const [adminEmail, setAdminEmail] = useState("")
+  const [adminPassword, setAdminPassword] = useState("")
 
   const [orgName, setOrgName] = useState("")
   const [orgEmail, setOrgEmail] = useState("")
   const [orgPassword, setOrgPassword] = useState("")
+  const [organizationAuthMode, setOrganizationAuthMode] = useState<OrganizationAuthMode>("signup")
 
   useEffect(() => {
     if (introStage !== "transition") {
@@ -64,6 +66,12 @@ export default function AccessPage() {
   }
 
   const handleAdminLogin = async () => {
+    if (!adminEmail.trim() || !adminPassword.trim()) {
+      setMessage("Admin email and password are required.")
+      setMessageType("error")
+      return
+    }
+
     setLoading(true)
     setMessage("")
     setMessageType(null)
@@ -82,6 +90,12 @@ export default function AccessPage() {
   }
 
   const handleOrganizationSignup = async () => {
+    if (!orgName.trim() || !orgEmail.trim() || !orgPassword.trim()) {
+      setMessage("Organization name, email, and password are required.")
+      setMessageType("error")
+      return
+    }
+
     setLoading(true)
     setMessage("")
     setMessageType(null)
@@ -100,6 +114,12 @@ export default function AccessPage() {
   }
 
   const handleOrganizationLogin = async () => {
+    if (!orgEmail.trim() || !orgPassword.trim()) {
+      setMessage("Organization email and password are required.")
+      setMessageType("error")
+      return
+    }
+
     setLoading(true)
     setMessage("")
     setMessageType(null)
@@ -267,12 +287,39 @@ export default function AccessPage() {
               </div>
 
               <div className="space-y-3">
-                <input
-                  value={orgName}
-                  onChange={(e) => setOrgName(e.target.value)}
-                  placeholder="Organization name"
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs"
-                />
+                <div className="inline-flex gap-2 rounded-lg border border-border/80 bg-background/40 p-1">
+                  <button
+                    type="button"
+                    onClick={() => setOrganizationAuthMode("signup")}
+                    className={`rounded-md px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider transition ${
+                      organizationAuthMode === "signup"
+                        ? "border border-neon-purple bg-neon-purple/10 text-neon-purple"
+                        : "border border-transparent text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    Create Org
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOrganizationAuthMode("login")}
+                    className={`rounded-md px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider transition ${
+                      organizationAuthMode === "login"
+                        ? "border border-neon-cyan bg-neon-cyan/10 text-neon-cyan"
+                        : "border border-transparent text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    Org Login
+                  </button>
+                </div>
+
+                {organizationAuthMode === "signup" && (
+                  <input
+                    value={orgName}
+                    onChange={(e) => setOrgName(e.target.value)}
+                    placeholder="Organization name"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs"
+                  />
+                )}
                 <input
                   value={orgEmail}
                   onChange={(e) => setOrgEmail(e.target.value)}
@@ -288,20 +335,23 @@ export default function AccessPage() {
                 />
 
                 <div className="flex flex-wrap gap-2">
-                  <button
-                    onClick={handleOrganizationSignup}
-                    disabled={loading}
-                    className="rounded-lg border border-neon-purple bg-neon-purple/10 px-4 py-2 font-mono text-xs uppercase tracking-wider text-neon-purple disabled:opacity-60"
-                  >
-                    Create Org
-                  </button>
-                  <button
-                    onClick={handleOrganizationLogin}
-                    disabled={loading}
-                    className="rounded-lg border border-border px-4 py-2 font-mono text-xs uppercase tracking-wider text-muted-foreground hover:text-foreground disabled:opacity-60"
-                  >
-                    Org Login
-                  </button>
+                  {organizationAuthMode === "signup" ? (
+                    <button
+                      onClick={handleOrganizationSignup}
+                      disabled={loading}
+                      className="rounded-lg border border-neon-purple bg-neon-purple/10 px-4 py-2 font-mono text-xs uppercase tracking-wider text-neon-purple disabled:opacity-60"
+                    >
+                      Create Org
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleOrganizationLogin}
+                      disabled={loading}
+                      className="rounded-lg border border-neon-cyan bg-neon-cyan/10 px-4 py-2 font-mono text-xs uppercase tracking-wider text-neon-cyan disabled:opacity-60"
+                    >
+                      Org Login
+                    </button>
+                  )}
                 </div>
               </div>
             </section>

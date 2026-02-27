@@ -85,9 +85,10 @@ class ContinuousDatasetBuilder:
             df["hour"] = pd.to_datetime(df["timestamp"]).dt.hour
             df["dayofweek"] = pd.to_datetime(df["timestamp"]).dt.dayofweek
 
-        if "energy_usage" in df.columns:
-            df["rolling_mean_3"] = df["energy_usage"].rolling(3, min_periods=1).mean()
-            df["rolling_std_3"] = df["energy_usage"].rolling(3, min_periods=1).std().fillna(0)
+        target_column = "energy_usage_kwh" if "energy_usage_kwh" in df.columns else "energy_usage"
+        if target_column in df.columns:
+            df["rolling_mean_3"] = df[target_column].rolling(3, min_periods=1).mean()
+            df["rolling_std_3"] = df[target_column].rolling(3, min_periods=1).std().fillna(0)
 
         df = df.fillna(method="ffill").fillna(0)
 
