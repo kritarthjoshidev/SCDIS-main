@@ -11,7 +11,7 @@ from pathlib import Path
 from statistics import mean
 from typing import Any, Dict
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, Response
 
 from core.config import settings
@@ -86,6 +86,52 @@ def _tail_csv_record_count(file_path: Path, line_count: int = 200) -> int:
             continue
         count += 1
     return count
+
+
+def _with_client_edge_overlay(payload: Dict[str, Any], edge_id: str) -> Dict[str, Any]:
+    normalized_edge_id = str(edge_id or "").strip()
+    if not normalized_edge_id:
+        return payload
+
+    edge_lookup = edge_agent_registry.latest_for(edge_id=normalized_edge_id, history_limit=1)
+    edge_latest = edge_lookup.get("latest")
+    if not isinstance(edge_latest, dict):
+        return payload
+
+    telemetry = dict(payload.get("telemetry") or {})
+    if not telemetry:
+        return payload
+
+    edge_profile = dict(telemetry.get("edge_profile") or {})
+
+    if edge_latest.get("cpu_cores") is not None:
+        edge_profile["cpu_cores"] = edge_latest.get("cpu_cores")
+    if edge_latest.get("physical_cpu_cores") is not None:
+        edge_profile["physical_cpu_cores"] = edge_latest.get("physical_cpu_cores")
+    if edge_latest.get("memory_total_gb") is not None:
+        edge_profile["memory_total_gb"] = edge_latest.get("memory_total_gb")
+    if edge_latest.get("disk_total_gb") is not None:
+        edge_profile["disk_total_gb"] = edge_latest.get("disk_total_gb")
+    if edge_latest.get("network_type") is not None:
+        edge_profile["network_type"] = edge_latest.get("network_type")
+
+    edge_profile["source"] = edge_latest.get("source") or "browser_edge_agent"
+
+    if edge_latest.get("hostname"):
+        telemetry["hostname"] = edge_latest.get("hostname")
+    if edge_latest.get("platform"):
+        telemetry["platform"] = edge_latest.get("platform")
+    if edge_latest.get("battery_percent") is not None:
+        telemetry["battery_percent"] = edge_latest.get("battery_percent")
+    if edge_latest.get("power_plugged") is not None:
+        telemetry["power_plugged"] = edge_latest.get("power_plugged")
+
+    telemetry["edge_id"] = edge_latest.get("edge_id") or normalized_edge_id
+    telemetry["edge_profile"] = edge_profile
+
+    merged_payload = dict(payload)
+    merged_payload["telemetry"] = telemetry
+    return merged_payload
 
 
 def _calculate_forecast_accuracy(recent_rows: list[Dict[str, Any]]) -> tuple[float, int]:

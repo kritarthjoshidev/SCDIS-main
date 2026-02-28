@@ -378,6 +378,20 @@ class EdgeAgentRegistry:
         if not edge_id:
             raise ValueError("edge_id is required")
 
+        edge_profile = telemetry.get("edge_profile")
+        if not isinstance(edge_profile, dict):
+            edge_profile = {}
+
+        cpu_cores_raw = telemetry.get("cpu_cores", edge_profile.get("cpu_cores"))
+        physical_cpu_cores_raw = telemetry.get("physical_cpu_cores", edge_profile.get("physical_cpu_cores"))
+        memory_total_gb_raw = telemetry.get("memory_total_gb", edge_profile.get("memory_total_gb"))
+        disk_total_gb_raw = telemetry.get("disk_total_gb", edge_profile.get("disk_total_gb"))
+
+        cpu_cores = int(_safe_float(cpu_cores_raw, 0.0)) or None
+        physical_cpu_cores = int(_safe_float(physical_cpu_cores_raw, 0.0)) or None
+        memory_total_gb = round(_safe_float(memory_total_gb_raw, 0.0), 2) or None
+        disk_total_gb = round(_safe_float(disk_total_gb_raw, 0.0), 2) or None
+
         record = {
             "edge_id": edge_id,
             "timestamp": telemetry.get("timestamp") or datetime.utcnow().isoformat(),
@@ -390,6 +404,10 @@ class EdgeAgentRegistry:
             "power_plugged": telemetry.get("power_plugged"),
             "process_count": int(_safe_float(telemetry.get("process_count"), 0.0)),
             "network_type": telemetry.get("network_type"),
+            "cpu_cores": cpu_cores,
+            "physical_cpu_cores": physical_cpu_cores,
+            "memory_total_gb": memory_total_gb,
+            "disk_total_gb": disk_total_gb,
             "source": telemetry.get("source") or "edge-agent",
         }
 
