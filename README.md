@@ -196,6 +196,26 @@ SCDIS_ADMIN_PASSWORD=<strong-admin-password>
 
 ## Deployment
 
+## Backend on Back4App Containers (Recommended no-card path)
+
+This repo includes `backend/Dockerfile` for containerized FastAPI deployment.
+
+1. In Back4App: `Create new app` -> `Container as a Service`
+2. Connect GitHub and select this repository
+3. Deployment settings:
+   - Root directory: `backend`
+   - Dockerfile path: `Dockerfile`
+4. Add environment variables from "Security env (production)" plus:
+
+```env
+DATABASE_URL=postgresql://<user>:<password>@<host>:5432/<db>?sslmode=require
+```
+
+5. Deploy and wait for build + run completion
+6. Verify:
+   - `https://<your-back4app-backend-url>/`
+   - `https://<your-back4app-backend-url>/docs`
+
 ## Backend on Lightning AI
 
 Use an always-on app/runtime (not notebook session) and deploy `backend` as service.

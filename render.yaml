@@ -1,6 +1,7 @@
 services:
   - type: web
     name: scdis-backend
+    plan: free
     runtime: python
     rootDir: backend
     buildCommand: pip install -r requirements.txt
