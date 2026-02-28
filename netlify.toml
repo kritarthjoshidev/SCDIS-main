@@ -5,6 +5,7 @@
 
 [build.environment]
   NODE_VERSION = "20"
+  PNPM_FLAGS = "--no-frozen-lockfile"
 
 [context.production.environment]
   NEXT_PUBLIC_API_BASE_URL = "https://scdisbackend-gqqop86n.b4a.run"
