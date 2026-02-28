@@ -1,0 +1,13 @@
+.git
+.gitignore
+frontend/node_modules/
+frontend/.next/
+frontend/tsconfig.tsbuildinfo
+backend/__pycache__/
+backend/*.pyc
+backend/.venv/
+backend/venv/
+backend/logs/
+backend/data/reports/
+ml-model/
+node_modules/
