@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "dev-only-secret-change-in-production"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     TOKEN_EXPIRE_MINUTES: int = 60
-    CORS_ALLOWED_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"
+    CORS_ALLOWED_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000,https://agent-69a3103d878ee91525903115--scdisapp.netlify.app"
 
     # =====================================================
     # OPTIMIZATION CONSTRAINTS
