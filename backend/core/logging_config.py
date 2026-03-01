@@ -29,6 +29,8 @@ class LoggingConfig:
 
         # Root logger
         root_logger = logging.getLogger()
+        if getattr(root_logger, "_scdis_logging_configured", False):
+            return
         root_logger.setLevel(logging.INFO)
         for handler in list(root_logger.handlers):
             root_logger.removeHandler(handler)
@@ -57,4 +59,5 @@ class LoggingConfig:
         error_handler.setFormatter(formatter)
         root_logger.addHandler(error_handler)
 
+        root_logger._scdis_logging_configured = True
         logging.info("Logging system initialized successfully")
